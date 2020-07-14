@@ -17,14 +17,18 @@ package database
 import (
 	"context"
 	"os"
-	"runtime"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/google/exposure-notifications-verification-server/pkg/retry"
-
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/ory/dockertest"
+	"github.com/sethvargo/go-retry"
+)
+
+var (
+	approxTime = cmp.Options{cmpopts.EquateApproxTime(time.Second)}
 )
 
 // NewTestDatabaseWithConfig creates a new database suitable for use in testing.
@@ -78,11 +82,8 @@ func NewTestDatabaseWithConfig(tb testing.TB) (*Database, *Config) {
 	})
 
 	// Get the host. On Mac, Docker runs in a VM.
-	host := container.Container.NetworkSettings.IPAddress
+	host := container.GetBoundIP("5432/tcp")
 	port := container.GetPort("5432/tcp")
-	if runtime.GOOS == "darwin" {
-		host = container.GetBoundIP("5432/tcp")
-	}
 
 	// build database config.
 	config := Config{
@@ -100,8 +101,15 @@ func NewTestDatabaseWithConfig(tb testing.TB) (*Database, *Config) {
 
 	// Establish a connection to the database. Use a Fibonacci backoff instead of
 	// exponential so wait times scale appropriately.
+	b, err := retry.NewFibonacci(500 * time.Millisecond)
+	if err != nil {
+		tb.Fatalf("failed to configure backoff: %v", err)
+	}
+	b = retry.WithMaxRetries(10, b)
+	b = retry.WithCappedDuration(10*time.Second, b)
+
 	var db *Database
-	if err := retry.RetryFib(ctx, 500*time.Millisecond, 10, func() error {
+	if err := retry.Do(ctx, b, func(_ context.Context) error {
 		var err error
 		db, err = config.Open()
 		if err != nil {

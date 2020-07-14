@@ -40,7 +40,7 @@ func TestSaveVerCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error reading code from db: %v", err)
 	}
-	if diff := cmp.Diff(code, *got); diff != "" {
+	if diff := cmp.Diff(code, *got, approxTime); diff != "" {
 		t.Fatalf("mismatch (-want, +got):\n%s", diff)
 	}
 
@@ -53,7 +53,7 @@ func TestSaveVerCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error reading code from db: %v", err)
 	}
-	if diff := cmp.Diff(code, *got); diff != "" {
+	if diff := cmp.Diff(code, *got, approxTime); diff != "" {
 		t.Fatalf("mismatch (-want, +got):\n%s", diff)
 	}
 }
@@ -82,9 +82,9 @@ func TestVerCodeValidate(t *testing.T) {
 		{
 			Name: "invalid test date",
 			Code: VerificationCode{
-				Code:     "123456",
-				TestType: "negative",
-				TestDate: &oldTest,
+				Code:        "123456",
+				TestType:    "negative",
+				SymptomDate: &oldTest,
 			},
 			Err: ErrTestTooOld,
 		},

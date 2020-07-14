@@ -43,7 +43,8 @@ func TestUserLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error reading user from db: %v", err)
 	}
-	if diff := cmp.Diff(user, *got); diff != "" {
+
+	if diff := cmp.Diff(user, *got, approxTime); diff != "" {
 		t.Fatalf("mismatch (-want, +got):\n%s", diff)
 	}
 
@@ -56,7 +57,8 @@ func TestUserLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error reading user from db: %v", err)
 	}
-	if diff := cmp.Diff(user, *got); diff != "" {
+
+	if diff := cmp.Diff(user, *got, approxTime); diff != "" {
 		t.Fatalf("mismatch (-want, +got):\n%s", diff)
 	}
 }

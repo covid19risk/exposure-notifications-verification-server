@@ -11,7 +11,7 @@ require (
 	github.com/client9/misspell v0.3.4
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
-	github.com/google/exposure-notifications-server v0.0.0-20200623155506-d2b23e8636f9
+	github.com/google/exposure-notifications-server v0.0.0-20200707224223-f5372ed732fa
 	github.com/google/go-cmp v0.5.0
 	github.com/gorilla/context v1.1.1
 	github.com/gorilla/csrf v1.7.0
@@ -24,16 +24,17 @@ require (
 	github.com/ory/dockertest v3.3.5+incompatible
 	github.com/sethvargo/go-envconfig v0.1.1
 	github.com/sethvargo/go-gcpkms v0.0.0-20200507180216-f1fca850aed2
+	github.com/sethvargo/go-limiter v0.1.0
+	github.com/sethvargo/go-retry v0.1.0
 	github.com/sirupsen/logrus v1.6.0 // indirect
 	github.com/stretchr/testify v1.6.1 // indirect
-	github.com/ulule/limiter/v3 v3.5.0
 	go.opencensus.io v0.22.4 // indirect
 	go.uber.org/zap v1.15.0
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9 // indirect
 	golang.org/x/net v0.0.0-20200602114024-627f9648deb9 // indirect
 	golang.org/x/sys v0.0.0-20200622214017-ed371f2e16b4 // indirect
 	golang.org/x/text v0.3.3 // indirect
-	golang.org/x/tools v0.0.0-20200623045635-ff88973b1e4e
+	golang.org/x/tools v0.0.0-20200623204733-f8e0ea3a3a8f
 	google.golang.org/api v0.28.0 // indirect
 	google.golang.org/genproto v0.0.0-20200623002339-fbb79eadd5eb
 	google.golang.org/grpc v1.30.0 // indirect

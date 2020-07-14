@@ -18,6 +18,15 @@ package api
 
 import "fmt"
 
+const (
+	// TestTypeConfirmed is the string that represents a confirmed covid-19 test.
+	TestTypeConfirmed = "confirmed"
+	// TestTypeLikely is the string that represents a clinical diagnosis.
+	TestTypeLikely = "likely"
+	// TestTypeNegative is the string that represents a netgative test.
+	TestTypeNegative = "negative"
+)
+
 // ErrorReturn defines the common error type.
 type ErrorReturn struct {
 	Error string `json:"error"`
@@ -38,8 +47,8 @@ type CSRFResponse struct {
 // code. This is called by the Web frontend.
 // API is served at /api/issue
 type IssueCodeRequest struct {
-	TestType string `json:"testType"`
-	TestDate string `json:"testDate"`
+	TestType    string `json:"testType"`
+	SymptomDate string `json:"symptomDate"`
 }
 
 // IssueCodeResponse defines the response type for IssueCodeRequest.
@@ -62,15 +71,15 @@ type VerifyCodeRequest struct {
 // may be snet back on a valid VerificationCertificateRequest later.
 type VerifyCodeResponse struct {
 	TestType          string `json:"testtype"`
-	TestDate          string `json:"testdate"` // ISO 8601 formatted date, YYYY-MM-DD
-	VerificationToken string `json:"token"`    // JWT - signed, not encrypted.
+	SymptomDate       string `json:"symptomDate"` // ISO 8601 formatted date, YYYY-MM-DD
+	VerificationToken string `json:"token"`       // JWT - signed, not encrypted.
 	Error             string `json:"error"`
 }
 
 // VerificationCertificateRequest is used to accept a long term token and
 // an HMAC of the TEKs.
 // The details of the HMAC calculation are avialble at:
-// https://github.com/google/exposure-notifications-server/blob/master/docs/design/verification_protocol.md
+// https://github.com/google/exposure-notifications-server/blob/main/docs/design/verification_protocol.md
 //
 // Requires API key in a HTTP header, X-API-Key: APIKEY
 type VerificationCertificateRequest struct {

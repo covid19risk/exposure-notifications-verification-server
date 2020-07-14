@@ -13,6 +13,10 @@
 # limitations under the License.
 
 locals {
+  gcp_config = {
+    PROJECT_ID = var.project
+  }
+
   csrf_config = {
     CSRF_AUTH_KEY = "secret://${google_secret_manager_secret_version.csrf-token-version.id}"
   }
@@ -40,7 +44,7 @@ locals {
   }
 
   signing_config = {
-    CERTIFICATE_SIGNING_KEY = google_kms_crypto_key.certificate-signer.self_link
-    TOKEN_SIGNING_KEY       = google_kms_crypto_key.token-signer.self_link
+    CERTIFICATE_SIGNING_KEY = trimprefix(data.google_kms_crypto_key_version.certificate-signer-version.id, "//cloudkms.googleapis.com/v1/")
+    TOKEN_SIGNING_KEY       = trimprefix(data.google_kms_crypto_key_version.token-signer-version.id, "//cloudkms.googleapis.com/v1/")
   }
 }

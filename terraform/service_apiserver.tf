@@ -44,6 +44,25 @@ resource "google_secret_manager_secret_iam_member" "apiserver-db" {
   member    = "serviceAccount:${google_service_account.apiserver.email}"
 }
 
+resource "google_kms_key_ring_iam_member" "kms-signerverifier" {
+  key_ring_id = google_kms_key_ring.verification.self_link
+  role        = "roles/cloudkms.signerVerifier"
+  member      = "serviceAccount:${google_service_account.apiserver.email}"
+}
+
+resource "google_project_iam_member" "apiserver-observability" {
+  for_each = toset([
+    "roles/cloudtrace.agent",
+    "roles/logging.logWriter",
+    "roles/monitoring.metricWriter",
+    "roles/stackdriver.resourceMetadata.writer",
+  ])
+
+  project = var.project
+  role    = each.key
+  member  = "serviceAccount:${google_service_account.apiserver.email}"
+}
+
 resource "google_cloud_run_service" "apiserver" {
   name     = "apiserver"
   location = var.region
@@ -61,6 +80,15 @@ resource "google_cloud_run_service" "apiserver" {
             memory = "512Mi"
           }
         }
+
+        dynamic "env" {
+          for_each = local.gcp_config
+          content {
+            name  = env.key
+            value = env.value
+          }
+        }
+
 
         dynamic "env" {
           for_each = local.csrf_config
