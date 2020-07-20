@@ -19,8 +19,8 @@ package main
 import (
 	"context"
 	"crypto/sha1"
+	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -28,11 +28,15 @@ import (
 
 	"github.com/google/exposure-notifications-verification-server/pkg/config"
 	"github.com/google/exposure-notifications-verification-server/pkg/controller/certapi"
+	"github.com/google/exposure-notifications-verification-server/pkg/controller/cover"
 	"github.com/google/exposure-notifications-verification-server/pkg/controller/middleware"
 	"github.com/google/exposure-notifications-verification-server/pkg/controller/verifyapi"
+	"github.com/google/exposure-notifications-verification-server/pkg/database"
 	"github.com/google/exposure-notifications-verification-server/pkg/gcpkms"
+	"github.com/google/exposure-notifications-verification-server/pkg/logging"
+	"github.com/google/exposure-notifications-verification-server/pkg/ratelimit"
 	"github.com/sethvargo/go-limiter/httplimit"
-	"github.com/sethvargo/go-limiter/memorystore"
+	"github.com/sethvargo/go-signalcontext"
 
 	"github.com/google/exposure-notifications-server/pkg/cache"
 
@@ -41,63 +45,102 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
+	ctx, done := signalcontext.OnInterrupt()
+
+	err := realMain(ctx)
+	done()
+
+	logger := logging.FromContext(ctx)
+	if err != nil {
+		logger.Fatal(err)
+	}
+	logger.Info("successful shutdown")
+}
+
+func realMain(ctx context.Context) error {
+	logger := logging.FromContext(ctx)
+
 	config, err := config.NewAPIServerConfig(ctx)
 	if err != nil {
-		log.Fatalf("config error: %v", err)
+		return fmt.Errorf("failed to process config: %w", err)
 	}
+
 	// Setup database
 	db, err := config.Database.Open()
 	if err != nil {
-		log.Fatalf("db connection failed: %v", err)
+		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 	defer db.Close()
 
 	// Setup signer
 	signer, err := gcpkms.New(ctx)
 	if err != nil {
-		log.Fatalf("error creating KeyManager: %v", err)
+		return fmt.Errorf("failed to crate key manager: %w", err)
 	}
 
+	// Create the router
 	r := mux.NewRouter()
 
 	// Setup rate limiter
-	store, err := memorystore.New(&memorystore.Config{
-		Tokens:   config.RateLimit,
-		Interval: 1 * time.Minute,
-	})
+	store, err := ratelimit.RateLimiterFor(ctx, &config.RateLimit)
 	if err != nil {
-		log.Fatalf("failed to create limiter: %v", err)
+		return fmt.Errorf("failed to create limiter: %w", err)
 	}
-	defer store.Stop()
+	defer store.Close()
 
 	httplimiter, err := httplimit.NewMiddleware(store, apiKeyFunc())
 	if err != nil {
-		log.Fatalf("failed to create limiter middleware: %v", err)
+		return fmt.Errorf("failed to create limiter middleware: %w", err)
 	}
 	r.Use(httplimiter.Handle)
 
 	// Setup API auth
 	apiKeyCache, err := cache.New(config.APIKeyCacheDuration)
 	if err != nil {
-		log.Fatalf("error establishing API Key cache: %v", err)
+		return fmt.Errorf("failed to create apikey cache: %w", err)
 	}
-	r.Use(middleware.APIKeyAuth(ctx, db, apiKeyCache).Handle)
+	// Install the APIKey Auth Middleware
+	r.Use(middleware.APIKeyAuth(ctx, db, apiKeyCache, database.APIUserTypeDevice).Handle)
 
 	publicKeyCache, err := cache.New(config.PublicKeyCacheDuration)
 	if err != nil {
-		log.Fatalf("error establishing Public Key Cache: %v", err)
+		return fmt.Errorf("failed to create publickey cache: %w", err)
 	}
 
 	r.Handle("/api/verify", verifyapi.New(ctx, config, db, signer)).Methods("POST")
 	r.Handle("/api/certificate", certapi.New(ctx, config, db, signer, publicKeyCache)).Methods("POST")
+	r.Handle("/api/cover", cover.New(ctx)).Methods("POST")
 
 	srv := &http.Server{
 		Handler: handlers.CombinedLoggingHandler(os.Stdout, r),
 		Addr:    "0.0.0.0:" + strconv.Itoa(config.Port),
 	}
-	log.Printf("Listening on: 127.0.0.1:%v", config.Port)
-	log.Fatal(srv.ListenAndServe())
+
+	errCh := make(chan error, 1)
+	go func() {
+		logger.Infow("server listening", "port", config.Port)
+
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			select {
+			case errCh <- err:
+			default:
+			}
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+	case <-errCh:
+		return fmt.Errorf("server error: %w", err)
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("failed to shutdown server")
+	}
+
+	return nil
 }
 
 func apiKeyFunc() httplimit.KeyFunc {

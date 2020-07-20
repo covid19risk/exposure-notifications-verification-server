@@ -35,6 +35,13 @@ variable "database_disk_size_gb" {
   description = "Size of the Cloud SQL disk, in GB."
 }
 
+variable "database_max_connections" {
+  type    = number
+  default = 100000
+
+  description = "Maximum number of allowed connections. If you change to a smaller instance size, you must lower this number."
+}
+
 variable "database_name" {
   type    = string
   default = "en-verification"
@@ -58,6 +65,23 @@ variable "cloudscheduler_location" {
   default = "us-central1"
 }
 
+variable "kms_location" {
+  type    = string
+  default = "us-central1"
+
+  description = "Location in which to create KMS keys"
+}
+
+variable "redis_location" {
+  type    = string
+  default = "us-central1-a"
+}
+
+variable "redis_alternative_location" {
+  type    = string
+  default = "us-central1-c"
+}
+
 variable "service_environment" {
   type    = map(map(string))
   default = {}
@@ -70,6 +94,13 @@ variable "vpc_access_connector_max_throughput" {
   default = 1000
 
   description = "Maximum provisioned traffic throughput in Mbps"
+}
+
+variable "redis_cache_size" {
+  type    = number
+  default = 8
+
+  description = "Size of the Redis instance in GB."
 }
 
 terraform {

@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This server implements the database cleanup. The server itself is unauthenticated
-// and should not be deployed as a public service.
+// This server implements the device facing APIs for exchaning verification codes
+// for tokens and tokens for certificates.
 package main
 
 import (
 	"context"
+	"crypto/sha1"
 	"errors"
 	"fmt"
 	"net/http"
@@ -26,8 +27,13 @@ import (
 	"time"
 
 	"github.com/google/exposure-notifications-verification-server/pkg/config"
-	"github.com/google/exposure-notifications-verification-server/pkg/controller/cleanup"
+	"github.com/google/exposure-notifications-verification-server/pkg/controller/cover"
+	"github.com/google/exposure-notifications-verification-server/pkg/controller/issueapi"
+	"github.com/google/exposure-notifications-verification-server/pkg/controller/middleware"
+	"github.com/google/exposure-notifications-verification-server/pkg/database"
 	"github.com/google/exposure-notifications-verification-server/pkg/logging"
+	"github.com/sethvargo/go-limiter/httplimit"
+	"github.com/sethvargo/go-limiter/memorystore"
 	"github.com/sethvargo/go-signalcontext"
 
 	"github.com/google/exposure-notifications-server/pkg/cache"
@@ -52,7 +58,7 @@ func main() {
 func realMain(ctx context.Context) error {
 	logger := logging.FromContext(ctx)
 
-	config, err := config.NewCleanupConfig(ctx)
+	config, err := config.NewAdminAPIServerConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to process config: %w", err)
 	}
@@ -67,13 +73,32 @@ func realMain(ctx context.Context) error {
 	// Create the router
 	r := mux.NewRouter()
 
-	// Cleanup handler doesn't require authentication - does use locking to ensure
-	// database isn't tipped over by cleanup.
-	cleanupCache, err := cache.New(time.Minute)
+	// Setup rate limiter
+	store, err := memorystore.New(&memorystore.Config{
+		Tokens:   config.RateLimit,
+		Interval: 1 * time.Minute,
+	})
 	if err != nil {
-		return fmt.Errorf("failed to create cache: %w", err)
+		return fmt.Errorf("failed to create limiter: %w", err)
 	}
-	r.Handle("/", cleanup.New(ctx, config, cleanupCache, db)).Methods("GET")
+	defer store.Close()
+
+	httplimiter, err := httplimit.NewMiddleware(store, apiKeyFunc())
+	if err != nil {
+		return fmt.Errorf("failed to create limiter middleware: %w", err)
+	}
+	r.Use(httplimiter.Handle)
+
+	// Setup API auth
+	apiKeyCache, err := cache.New(config.APIKeyCacheDuration)
+	if err != nil {
+		return fmt.Errorf("failed to create apikey cache: %w", err)
+	}
+	// Install the APIKey Auth Middleware
+	r.Use(middleware.APIKeyAuth(ctx, db, apiKeyCache, database.APIUserTypeAdmin).Handle)
+
+	r.Handle("/api/issue", issueapi.New(ctx, config, db)).Methods("POST")
+	r.Handle("/api/cover", cover.New(ctx)).Methods("POST")
 
 	srv := &http.Server{
 		Handler: handlers.CombinedLoggingHandler(os.Stdout, r),
@@ -105,4 +130,19 @@ func realMain(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func apiKeyFunc() httplimit.KeyFunc {
+	ipKeyFunc := httplimit.IPKeyFunc("X-Forwarded-For")
+
+	return func(r *http.Request) (string, error) {
+		v := r.Header.Get("X-API-Key")
+		if v != "" {
+			dig := sha1.Sum([]byte(v))
+			return fmt.Sprintf("%x", dig), nil
+		}
+
+		// If no API key was provided, default to limiting by IP.
+		return ipKeyFunc(r)
+	}
 }
